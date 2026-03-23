@@ -10,33 +10,36 @@ import requests
 # 1. 数据下载与解压模块
 # ==========================================
 def download_wikitext2(root_dir='./data'):
-    """自动下载并解压 WikiText-2 数据集"""
-    url = "https://s3.amazonaws.com/research.metamind.io/wikitext/wikitext-2-v1.zip"
-    os.makedirs(root_dir, exist_ok=True)
-    zip_path = os.path.join(root_dir, "wikitext-2.zip")
+    """直接从 GitHub 下载纯文本文件，彻底避开压缩包损坏和反爬虫问题"""
+    target_dir = os.path.join(root_dir, "wikitext-2")
+    os.makedirs(target_dir, exist_ok=True)
 
-    # 如果压缩包不存在，则使用 requests 下载
-    if not os.path.exists(zip_path):
-        print("正在下载 WikiText-2 数据集，请稍候 (这可能需要几分钟)...")
-        # requests.get 会自动处理 301 重定向
-        response = requests.get(url, stream=True)
-        response.raise_for_status()  # 检查是否下载成功
+    # 直接使用 PyTorch 官方 GitHub 仓库中托管的纯文本文件
+    urls = {
+        "wiki.train.tokens": "https://raw.githubusercontent.com/pytorch/examples/master/word_language_model/data/wikitext-2/train.txt",
+        "wiki.valid.tokens": "https://raw.githubusercontent.com/pytorch/examples/master/word_language_model/data/wikitext-2/valid.txt",
+        "wiki.test.tokens": "https://raw.githubusercontent.com/pytorch/examples/master/word_language_model/data/wikitext-2/test.txt"
+    }
 
-        with open(zip_path, 'wb') as f:
-            for chunk in response.iter_content(chunk_size=8192):
-                f.write(chunk)
+    paths = []
+    for filename, url in urls.items():
+        file_path = os.path.join(target_dir, filename)
+        paths.append(file_path)
 
-        print("下载完成，正在解压...")
-        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-            zip_ref.extractall(root_dir)
-        print("解压完毕！")
+        # 如果文件不存在，则直接拉取文本写入
+        if not os.path.exists(file_path):
+            print(f"正在从 PyTorch 官方 GitHub 下载 {filename} ...")
+            # 添加基础的 User-Agent 即可
+            headers = {'User-Agent': 'Mozilla/5.0'}
+            response = requests.get(url, headers=headers)
+            response.raise_for_status()
 
-    # 返回训练集、验证集和测试集的文件路径
-    train_path = os.path.join(root_dir, "wikitext-2", "wiki.train.tokens")
-    valid_path = os.path.join(root_dir, "wikitext-2", "wiki.valid.tokens")
-    test_path = os.path.join(root_dir, "wikitext-2", "wiki.test.tokens")
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.write(response.text)
+            print(f"{filename} 下载成功！")
 
-    return train_path, valid_path, test_path
+    print("所有数据文件准备完毕！")
+    return paths[0], paths[1], paths[2]
 
 
 # ==========================================
