@@ -1,10 +1,9 @@
 import os
-import zipfile
 import torch
 from torch.utils.data import Dataset, DataLoader
 from collections import Counter
 import requests
-
+from torch.utils.data import Subset
 
 # ==========================================
 # 1. 数据下载与解压模块
@@ -134,3 +133,33 @@ if __name__ == "__main__":
         print(f"\nX 的具体数据 (数字索引):\n{data}")
         print(f"Y 的具体数据 (数字索引):\n{target}")
         break  # 只看第一个 batch 就退出
+
+
+def get_federated_dataloaders(num_clients=2, batch_size=32, seq_len=35, max_vocab_size=10000):
+    """专为联邦学习设计的 Non-IID 数据划分引擎"""
+    train_path, valid_path, test_path = download_wikitext2()
+
+    print("正在构建联邦词表...")
+    vocab = build_vocab(train_path, max_vocab_size)
+
+    print("正在加载并切分训练数据...")
+    full_train_dataset = NextWordDataset(train_path, vocab, seq_len)
+
+    # 【Non-IID 核心逻辑】：顺序切块 (Block Partitioning)
+    dataset_size = len(full_train_dataset)
+    chunk_size = dataset_size // num_clients
+
+    client_loaders = []
+    for i in range(num_clients):
+        # 给每个客户端分配一段连续且完全不重合的文本块，模拟不同主题偏好的边缘设备
+        indices = list(range(i * chunk_size, (i + 1) * chunk_size))
+        subset = Subset(full_train_dataset, indices)
+        loader = DataLoader(subset, batch_size=batch_size, shuffle=True, drop_last=True)
+        client_loaders.append(loader)
+
+    print("正在准备全局验证集...")
+    valid_dataset = NextWordDataset(valid_path, vocab, seq_len)
+    valid_loader = DataLoader(valid_dataset, batch_size=batch_size, shuffle=False, drop_last=True)
+
+    print(f"成功将数据划分为 {num_clients} 份异构客户端数据！")
+    return client_loaders, valid_loader, vocab
