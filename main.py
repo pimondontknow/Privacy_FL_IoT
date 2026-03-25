@@ -6,6 +6,12 @@ from client import FLClient
 from flwr.common import Context
 
 
+def weighted_average(metrics):
+    """服务器用来计算所有客户端平均准确率的加权函数"""
+    accuracies = [num_examples * m["accuracy"] for num_examples, m in metrics]
+    examples = [num_examples for num_examples, _ in metrics]
+    return {"accuracy": sum(accuracies) / sum(examples)}
+
 def main():
     print("=== 启动最新版 Flower 联邦仿真实验 (Simulation API) ===")
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -24,7 +30,8 @@ def main():
         # 客户端只获取属于自己的那份“偏好数据”
         train_loader = client_loaders[client_id]
         model = NextWordLSTM(vocab_size=actual_vocab_size).to(device)
-        return FLClient(model, train_loader, epochs=1).to_client()
+        # 【修改】把 valid_loader 传给客户端
+        return FLClient(model, train_loader, valid_loader, epochs=1).to_client()
 
     # 3. 配置联邦学习策略
     strategy = fl.server.strategy.FedAvg(
@@ -33,6 +40,8 @@ def main():
         min_fit_clients=NUM_CLIENTS,
         min_evaluate_clients=NUM_CLIENTS,
         min_available_clients=NUM_CLIENTS,
+        # 【修改】新增下面这一行，指定评估汇总函数
+        evaluate_metrics_aggregation_fn=weighted_average,
     )
 
     # 4. 启动一键仿真！
